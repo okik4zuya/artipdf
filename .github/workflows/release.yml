@@ -1,0 +1,234 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          venv\Scripts\pip install -r requirements.txt
+
+      - name: Fetch and stage Windows binaries (poppler, tesseract, ghostscript, upx)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path stage | Out-Null
+
+          # --- Poppler (zip, versioned via GitHub API) ---
+          $popplerRelease = Invoke-RestMethod "https://api.github.com/repos/oschwartz10612/poppler-windows/releases/latest"
+          $popplerAsset = $popplerRelease.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+          Invoke-WebRequest $popplerAsset.browser_download_url -OutFile stage\poppler.zip
+          Expand-Archive stage\poppler.zip -DestinationPath stage\poppler -Force
+          $popplerLibBin = Get-ChildItem stage\poppler -Recurse -Directory -Filter bin | Where-Object { $_.Parent.Name -eq "Library" } | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path poppler\Library | Out-Null
+          Copy-Item $popplerLibBin.FullName poppler\Library\bin -Recurse
+
+          # --- Tesseract (NSIS installer, versioned via GitHub API) ---
+          $tesseractRelease = Invoke-RestMethod "https://api.github.com/repos/tesseract-ocr/tesseract/releases/latest"
+          $tesseractAsset = $tesseractRelease.assets | Where-Object { $_.name -like "tesseract-ocr-w64-setup-*.exe" } | Select-Object -First 1
+          Invoke-WebRequest $tesseractAsset.browser_download_url -OutFile stage\tesseract-setup.exe
+          7z x stage\tesseract-setup.exe -ostage\tesseract -y | Out-Null
+          $tessExe = Get-ChildItem stage\tesseract -Recurse -Filter tesseract.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path tesseract\tessdata | Out-Null
+          Copy-Item "$($tessExe.Directory.FullName)\*" tesseract\ -Recurse -Exclude "tessdata"
+          # The installer doesn't bundle language data — it fetches it over the
+          # network during interactive setup. Pull the fast (small) English
+          # model directly from its own GitHub repo instead.
+          Invoke-WebRequest "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/eng.traineddata" -OutFile tesseract\tessdata\eng.traineddata
+
+          # --- Ghostscript (NSIS installer, versioned via GitHub API) ---
+          $gsRelease = Invoke-RestMethod "https://api.github.com/repos/ArtifexSoftware/ghostpdl-downloads/releases/latest"
+          $gsAsset = $gsRelease.assets | Where-Object { $_.name -like "gs*w64.exe" } | Select-Object -First 1
+          Invoke-WebRequest $gsAsset.browser_download_url -OutFile stage\gs-setup.exe
+          7z x stage\gs-setup.exe -ostage\ghostscript -y | Out-Null
+          $gsExe = Get-ChildItem stage\ghostscript -Recurse -Filter gswin64c.exe | Select-Object -First 1
+          $gsRoot = $gsExe.Directory.Parent.FullName
+          New-Item -ItemType Directory -Force -Path ghostscript | Out-Null
+          foreach ($dir in "bin", "lib", "Resource") {
+            if (Test-Path "$gsRoot\$dir") {
+              Copy-Item "$gsRoot\$dir" "ghostscript\$dir" -Recurse
+            } else {
+              Write-Warning "No $dir dir found under $gsRoot — skipping"
+            }
+          }
+
+          # --- UPX (zip, versioned via GitHub API; optional but shrinks output ~40%) ---
+          $upxRelease = Invoke-RestMethod "https://api.github.com/repos/upx/upx/releases/latest"
+          $upxAsset = $upxRelease.assets | Where-Object { $_.name -like "*-win64.zip" } | Select-Object -First 1
+          Invoke-WebRequest $upxAsset.browser_download_url -OutFile stage\upx.zip
+          Expand-Archive stage\upx.zip -DestinationPath stage\upx -Force
+          $upxExe = Get-ChildItem stage\upx -Recurse -Filter upx.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force -Path upx | Out-Null
+          Copy-Item $upxExe.FullName upx\
+
+          Write-Host "Staged: poppler\Library\bin, tesseract\, ghostscript\, upx\"
+
+      - name: Build exe
+        run: .\build.bat
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Build installer
+        run: |
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" installer.nsi
+        shell: pwsh
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/UglyPDFSetup-*.exe
+
+  macos-build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+
+      - name: Fetch and stage macOS binaries (poppler, tesseract, ghostscript)
+        run: |
+          brew install poppler tesseract ghostscript dylibbundler
+
+          mkdir -p poppler-mac tesseract-mac/tessdata ghostscript-mac
+
+          # Stage the binaries, then use dylibbundler to copy every dylib
+          # each one depends on alongside it and rewrite its load paths to
+          # @executable_path/libs — makes the folder relocatable so it
+          # keeps working on a Mac that doesn't have Homebrew installed.
+          # dylibbundler only resolves a dylib via the exact path baked into
+          # the binary's load commands; when that doesn't line up with where
+          # Homebrew actually put it (e.g. a transitive dep pulled from a
+          # different formula's Cellar), it falls back to an interactive
+          # "Please specify the directory" prompt that just hangs CI. Passing
+          # every relevant formula's lib dir via -s gives it somewhere to
+          # search instead of prompting.
+          brew_lib="$(brew --prefix)/lib"
+          poppler_lib="$(brew --prefix poppler)/lib"
+          tesseract_lib="$(brew --prefix tesseract)/lib"
+          ghostscript_lib="$(brew --prefix ghostscript)/lib"
+
+          cp "$(brew --prefix poppler)/bin/pdftoppm" poppler-mac/
+          cp "$(brew --prefix poppler)/bin/pdftocairo" poppler-mac/
+          dylibbundler -od -b \
+            -x poppler-mac/pdftoppm \
+            -x poppler-mac/pdftocairo \
+            -d poppler-mac/libs -p @executable_path/libs/ \
+            -s "$poppler_lib" -s "$brew_lib"
+
+          cp "$(brew --prefix tesseract)/bin/tesseract" tesseract-mac/
+          cp "$(brew --prefix tesseract)/share/tessdata/eng.traineddata" tesseract-mac/tessdata/
+          dylibbundler -od -b \
+            -x tesseract-mac/tesseract \
+            -d tesseract-mac/libs -p @executable_path/libs/ \
+            -s "$tesseract_lib" -s "$brew_lib"
+
+          cp "$(brew --prefix ghostscript)/bin/gs" ghostscript-mac/
+          dylibbundler -od -b \
+            -x ghostscript-mac/gs \
+            -d ghostscript-mac/libs -p @executable_path/libs/ \
+            -s "$ghostscript_lib" -s "$brew_lib"
+
+          # gs has no compiled-in prefix once copied out of Cellar, so it
+          # can't find its init/font/ICC files on its own — stage them
+          # alongside the binary and point GS_LIB at them at runtime
+          # (see app/tab_compress.py).
+          gs_share_dir="$(brew --prefix ghostscript)/share/ghostscript"
+          echo "Ghostscript share dir contents:"
+          ls -la "$gs_share_dir"
+          gs_version="$(find "$gs_share_dir" -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort -V | tail -n1)"
+          echo "Using ghostscript version dir: $gs_version"
+          gs_version_dir="$gs_share_dir/$gs_version"
+          if [ -d "$gs_version_dir/Resource" ]; then
+            cp -R "$gs_version_dir/Resource" ghostscript-mac/Resource
+          else
+            echo "::warning::No Resource dir at $gs_version_dir/Resource — skipping (app falls back gracefully)"
+          fi
+          if [ -d "$gs_version_dir/lib" ]; then
+            cp -R "$gs_version_dir/lib" ghostscript-mac/lib
+          else
+            echo "::warning::No lib dir at $gs_version_dir/lib — skipping (app falls back gracefully)"
+          fi
+
+      - name: Generate icon.icns from icon.ico
+        run: |
+          source venv/bin/activate
+          python - <<'PY'
+          import os
+          from PIL import Image
+
+          img = Image.open("icon.ico").convert("RGBA")
+          os.makedirs("icon.iconset", exist_ok=True)
+          for size in (16, 32, 64, 128, 256, 512):
+              img.resize((size, size), Image.LANCZOS).save(f"icon.iconset/icon_{size}x{size}.png")
+              img.resize((size * 2, size * 2), Image.LANCZOS).save(f"icon.iconset/icon_{size}x{size}@2x.png")
+          PY
+          iconutil -c icns icon.iconset -o icon.icns
+
+      - name: Build app bundle
+        run: |
+          source venv/bin/activate
+          pyinstaller --onedir --windowed --name UglyPDF \
+            --icon icon.icns \
+            --add-data "poppler-mac:poppler-mac" \
+            --add-data "tesseract-mac:tesseract-mac" \
+            --add-data "ghostscript-mac:ghostscript-mac" \
+            --add-data "app:app" \
+            pdf2md_gui.py
+
+      - name: Package .dmg
+        run: |
+          mkdir -p dist/dmg
+          cp -R dist/UglyPDF.app dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "UglyPDF" \
+            -srcfolder dist/dmg \
+            -ov -format UDZO \
+            dist/UglyPDF.dmg
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: dist/UglyPDF.dmg
+
+  release:
+    needs: [windows-build, macos-build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/windows-installer/*.exe
+            artifacts/macos-dmg/*.dmg
