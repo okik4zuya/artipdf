@@ -13,5 +13,5 @@ class Toolbar(tk.Frame):
 
     def _build(self):
         # App name — left
-        tk.Label(self, text="Ugly PDF", bg="#1a1a1a", fg="#ffffff",
+        tk.Label(self, text="ARTi PDF", bg="#1a1a1a", fg="#ffffff",
                  font=("Segoe UI", 11, "bold")).pack(side="left", padx=14)

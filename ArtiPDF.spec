@@ -1,21 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-from PyInstaller.utils.hooks import collect_submodules
-
-# reportlab.graphics.barcode and xhtml2pdf both import submodules dynamically
-# (via __import__ / plugin-style lookup), so PyInstaller's static analysis
-# misses them unless listed explicitly here.
-hidden = (
-    collect_submodules('reportlab.graphics.barcode')
-    + collect_submodules('xhtml2pdf')
-)
-
 a = Analysis(
     ['pdf2md_gui.py'],
     pathex=[],
     binaries=[],
     datas=[('poppler', 'poppler'), ('tesseract', 'tesseract'), ('app', 'app'), ('icon.ico', '.')],
-    hiddenimports=hidden,
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -30,7 +20,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='UglyPDF',
+    name='ArtiPDF',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -50,5 +40,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='UglyPDF',
+    name='ArtiPDF',
 )

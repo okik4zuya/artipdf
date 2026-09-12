@@ -28,13 +28,13 @@ if exist "%UPX_DIR%\upx.exe" (
 
 REM ── Build ──────────────────────────────────────────────────────────────
 echo.
-echo Building UglyPDF.exe...
+echo Building ArtiPDF.exe...
 echo.
 
 REM Build from the .spec file (not raw CLI flags) so hand-tuned settings in
-REM UglyPDF.spec — e.g. hiddenimports for xhtml2pdf/reportlab — persist
-REM across builds instead of being regenerated and overwritten.
-pyinstaller UglyPDF.spec -y ^
+REM ArtiPDF.spec persist across builds instead of being regenerated and
+REM overwritten.
+pyinstaller ArtiPDF.spec -y ^
     %UPX_ARGS%
 if errorlevel 1 (
     echo.
@@ -43,11 +43,11 @@ if errorlevel 1 (
 )
 
 echo.
-if exist "%SCRIPT_DIR%dist\UglyPDF\UglyPDF.exe" (
+if exist "%SCRIPT_DIR%dist\ArtiPDF\ArtiPDF.exe" (
     echo Build successful!
-    echo Output folder: %SCRIPT_DIR%dist\UglyPDF\
+    echo Output folder: %SCRIPT_DIR%dist\ArtiPDF\
     echo.
-    echo Copy the entire dist\UglyPDF\ folder to any Windows machine.
+    echo Copy the entire dist\ArtiPDF\ folder to any Windows machine.
     echo No Python installation required.
 ) else (
     echo Build may have failed. Check output above.

@@ -94,7 +94,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: dist/UglyPDFSetup-*.exe
+          path: dist/ArtiPDFSetup-*.exe
 
   macos-build:
     runs-on: macos-latest
@@ -193,7 +193,7 @@ jobs:
       - name: Build app bundle
         run: |
           source venv/bin/activate
-          pyinstaller --onedir --windowed --name UglyPDF \
+          pyinstaller --onedir --windowed --name ArtiPDF \
             --icon icon.icns \
             --add-data "poppler-mac:poppler-mac" \
             --add-data "tesseract-mac:tesseract-mac" \
@@ -204,18 +204,18 @@ jobs:
       - name: Package .dmg
         run: |
           mkdir -p dist/dmg
-          cp -R dist/UglyPDF.app dist/dmg/
+          cp -R dist/ArtiPDF.app dist/dmg/
           ln -s /Applications dist/dmg/Applications
-          hdiutil create -volname "UglyPDF" \
+          hdiutil create -volname "ARTi PDF" \
             -srcfolder dist/dmg \
             -ov -format UDZO \
-            dist/UglyPDF.dmg
+            dist/ArtiPDF.dmg
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-dmg
-          path: dist/UglyPDF.dmg
+          path: dist/ArtiPDF.dmg
 
   release:
     needs: [windows-build, macos-build]

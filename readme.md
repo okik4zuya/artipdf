@@ -1,4 +1,4 @@
-# Ugly PDF
+# ARTi PDF
 
 A free, offline PDF toolkit for Windows. No upload. No account. Just PDF tools.
 
@@ -6,10 +6,10 @@ A free, offline PDF toolkit for Windows. No upload. No account. Just PDF tools.
 
 ## Download
 
-**[Download UglyPDF v1.0.2](https://github.com/okik4zuya/uglypdf/releases/download/v1.0.2/UglyPDF1.0.2.zip)**
+**[Download ARTi PDF](https://github.com/okik4zuya/artipdf/releases/latest)**
 
-- Windows 10 / 11 — `UglyPDFSetup-<version>.exe` installer (Start Menu shortcut, uninstaller) or the portable zip
-- macOS — `UglyPDF.dmg` (drag to Applications). Unsigned build — see [Known Limitations](#known-limitations).
+- Windows 10 / 11 — `ArtiPDFSetup-<version>.exe` installer (Start Menu shortcut, uninstaller) or the portable zip
+- macOS — `ArtiPDF.dmg` (drag to Applications). Unsigned build — see [Known Limitations](#known-limitations).
 
 ---
 
@@ -29,20 +29,20 @@ A free, offline PDF toolkit for Windows. No upload. No account. Just PDF tools.
 
 **Windows (installer)**
 
-1. Download and run `UglyPDFSetup-<version>.exe`
-2. Launch UglyPDF from the Start Menu (or Desktop, if selected during install)
+1. Download and run `ArtiPDFSetup-<version>.exe`
+2. Launch ARTi PDF from the Start Menu (or Desktop, if selected during install)
 
 **Windows (portable zip)**
 
-1. Download and unzip `UglyPDF.zip`
-2. Open the `UglyPDF/` folder
-3. Double-click `UglyPDF.exe`
+1. Download and unzip `ArtiPDF.zip`
+2. Open the `ArtiPDF/` folder
+3. Double-click `ArtiPDF.exe`
 
 **macOS**
 
-1. Download and open `UglyPDF.dmg`
-2. Drag `UglyPDF.app` to `Applications`
-3. First launch: right-click the app → **Open** (or run `xattr -cr /Applications/UglyPDF.app`) to bypass the Gatekeeper "unidentified developer" warning — see [Known Limitations](#known-limitations)
+1. Download and open `ArtiPDF.dmg`
+2. Drag `ArtiPDF.app` to `Applications`
+3. First launch: right-click the app → **Open** (or run `xattr -cr /Applications/ArtiPDF.app`) to bypass the Gatekeeper "unidentified developer" warning — see [Known Limitations](#known-limitations)
 
 Drag and drop PDF files onto the app. Output files are always saved next to the source PDF.
 
@@ -96,8 +96,8 @@ pdf2md-cli/
 ### 1. Clone the repo
 
 ```bat
-git clone https://github.com/okik4zuya/uglypdf
-cd uglypdf
+git clone https://github.com/okik4zuya/artipdf
+cd artipdf
 ```
 
 ### 2. Create virtual environment
@@ -167,7 +167,7 @@ Requires UPX for smaller output (optional):
 build.bat
 ```
 
-Output: `dist/UglyPDF/` — copy this folder to any Windows machine.
+Output: `dist/ArtiPDF/` — copy this folder to any Windows machine.
 
 ## Build Windows Installer
 
@@ -177,7 +177,7 @@ Requires [NSIS](https://nsis.sourceforge.io/Download) (`makensis.exe` on `PATH`)
 build_installer.bat
 ```
 
-Runs `build.bat` first, then compiles `installer.nsi` into `dist/UglyPDFSetup-<version>.exe`. Bump `APP_VERSION` in `installer.nsi` alongside `app/tab_about.py::VERSION` before building.
+Runs `build.bat` first, then compiles `installer.nsi` into `dist/ArtiPDFSetup-<version>.exe`. Bump `APP_VERSION` in `installer.nsi` alongside `app/tab_about.py::VERSION` before building.
 
 ## macOS Build
 

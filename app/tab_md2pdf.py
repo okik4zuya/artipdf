@@ -1,104 +1,68 @@
-import base64
-import io
 import os
-import re
+import subprocess
+import tempfile
 import threading
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, ttk
 
 import markdown
-from PIL import Image, ImageDraw
-from xhtml2pdf import pisa
 
+from .config import find_browser
 from .widgets import DropZone, LogPanel
 
-# xhtml2pdf/reportlab draws text using the base14 PDF fonts (Helvetica etc.),
-# which have no glyphs for status emoji — they render as blank boxes, and
-# getting xhtml2pdf to honor a custom @font-face for just these characters
-# proved unreliable. Render the icons as tiny raster images instead (drawn at
-# 4x and downscaled for smooth edges) and swap them in as inline <img> tags,
-# which xhtml2pdf always supports regardless of font/glyph coverage.
-_VARIATION_SELECTORS = re.compile(f"[{chr(0xFE0E)}{chr(0xFE0F)}]")
+PAGE_SIZES = ("A4", "Letter", "Legal")
+FONT_FAMILIES = ("Helvetica, sans-serif", "Georgia, serif", "Consolas, monospace")
+LINE_SPACINGS = ("1", "1.15", "1.5", "2")
+DEFAULT_FONT_SIZE = 12
+DEFAULT_MARGIN_CM = 2
+DEFAULT_LINE_SPACING = "1.15"
 
 
-def _icon_data_uri(draw_fn, size=32, supersample=4):
-    hi = size * supersample
-    img = Image.new("RGBA", (hi, hi), (0, 0, 0, 0))
-    draw_fn(ImageDraw.Draw(img), hi)
-    img = img.resize((size, size), Image.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
-
-
-def _draw_check(d, s):
-    d.ellipse((s * 0.03, s * 0.03, s * 0.97, s * 0.97), fill=(56, 142, 60, 255))
-    w = max(2, round(s * 0.09))
-    d.line([(s * 0.27, s * 0.53), (s * 0.44, s * 0.70), (s * 0.75, s * 0.32)],
-           fill="white", width=w, joint="curve")
-
-
-def _draw_cross(d, s):
-    d.ellipse((s * 0.03, s * 0.03, s * 0.97, s * 0.97), fill=(211, 47, 47, 255))
-    m, w = s * 0.28, max(2, round(s * 0.09))
-    d.line([(m, m), (s - m, s - m)], fill="white", width=w)
-    d.line([(s - m, m), (m, s - m)], fill="white", width=w)
-
-
-def _draw_warning(d, s):
-    d.polygon([(s * 0.5, s * 0.06), (s * 0.97, s * 0.92), (s * 0.03, s * 0.92)],
-              fill=(255, 179, 0, 255))
-    w = max(2, round(s * 0.08))
-    d.line([(s * 0.5, s * 0.40), (s * 0.5, s * 0.68)], fill="white", width=w)
-    r = s * 0.035
-    d.ellipse((s * 0.5 - r, s * 0.76 - r, s * 0.5 + r, s * 0.76 + r), fill="white")
-
-
-def _draw_circle(color):
-    def f(d, s):
-        d.ellipse((s * 0.15, s * 0.15, s * 0.85, s * 0.85), fill=color)
-    return f
-
-
-_ICON_URIS = {
-    "✅": _icon_data_uri(_draw_check),
-    "⚠": _icon_data_uri(_draw_warning),
-    "❌": _icon_data_uri(_draw_cross),
-    "🔴": _icon_data_uri(_draw_circle((229, 57, 53, 255))),
-    "🟡": _icon_data_uri(_draw_circle((249, 168, 37, 255))),
-}
-
-
-def _fix_unsupported_glyphs(html: str) -> str:
-    html = _VARIATION_SELECTORS.sub("", html)
-    for ch, uri in _ICON_URIS.items():
-        html = html.replace(
-            ch, f'<img src="{uri}" width="11" height="11" style="vertical-align:middle;">')
-    return html
-
-
-_PDF_CSS = """
+def _build_css(page_size: str, margin_cm: float, font_family: str, font_size: int,
+               line_spacing: str) -> str:
+    return f"""
 <style>
-@page { size: A4; margin: 2cm; }
-body { font-family: Helvetica, sans-serif; font-size: 11pt; }
-h1, h2, h3, h4 { color: #1a1a1a; }
-code, pre { font-family: Consolas, monospace; background: #f0f0f0; }
-pre { padding: 6px; border: 1px solid #ddd; }
-table { border-collapse: collapse; width: 100%; }
-th, td { border: 1px solid #ccc; padding: 4px 8px; }
-blockquote { color: #555; border-left: 3px solid #ccc; margin: 0; padding-left: 10px; }
+@page {{ size: {page_size}; margin: {margin_cm}cm; }}
+* {{ print-color-adjust: exact; -webkit-print-color-adjust: exact; }}
+body {{ font-family: {font_family}; font-size: {font_size}pt; line-height: {line_spacing}; }}
+p {{ margin: 0 0 {line_spacing}em 0; }}
+h1, h2, h3, h4 {{ color: #1a1a1a; }}
+code, pre {{ font-family: Consolas, monospace; background: #f0f0f0; }}
+pre {{ padding: 6px; border: 1px solid #ddd; }}
+table {{ border-collapse: collapse; width: 100%; }}
+th, td {{ border: 1px solid #ccc; padding: 4px 8px; }}
+blockquote {{ color: #555; border-left: 3px solid #ccc; margin: 0; padding-left: 10px; }}
 </style>
 """
 
 
-def _md_to_pdf(md_text: str, out_path: str):
+def _md_to_pdf(md_text: str, out_path: str, page_size: str = "A4",
+                margin_cm: float = DEFAULT_MARGIN_CM,
+                font_family: str = FONT_FAMILIES[0],
+                font_size: int = DEFAULT_FONT_SIZE,
+                line_spacing: str = DEFAULT_LINE_SPACING):
+    browser = find_browser()
+    if not browser:
+        raise RuntimeError("No headless-capable Edge/Chrome install found.")
+
+    css = _build_css(page_size, margin_cm, font_family, font_size, line_spacing)
     html = markdown.markdown(md_text, extensions=["tables", "fenced_code"])
-    html = _fix_unsupported_glyphs(html)
-    html = f"<html><head>{_PDF_CSS}</head><body>{html}</body></html>"
-    with open(out_path, "wb") as f:
-        result = pisa.CreatePDF(html, dest=f)
-    if result.err:
-        raise RuntimeError("PDF generation failed")
+    html = f"<html><head><meta charset=\"utf-8\">{css}</head><body>{html}</body></html>"
+
+    fd, html_path = tempfile.mkstemp(suffix=".html")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(html)
+        result = subprocess.run(
+            [browser, "--headless", "--disable-gpu",
+             f"--print-to-pdf={out_path}", "--print-to-pdf-no-header",
+             "--no-pdf-header-footer", html_path],
+            capture_output=True, text=True, timeout=60,
+        )
+        if not os.path.exists(out_path):
+            raise RuntimeError(f"PDF generation failed: {result.stderr.strip()}")
+    finally:
+        os.remove(html_path)
 
 
 class MdToPdfTab(tk.Frame):
@@ -106,6 +70,11 @@ class MdToPdfTab(tk.Frame):
         super().__init__(parent, bg="#f5f5f5")
         self.files: list[str] = []
         self.mode = tk.StringVar(value="files")
+        self.page_size = tk.StringVar(value="A4")
+        self.margin_cm = tk.StringVar(value=str(DEFAULT_MARGIN_CM))
+        self.font_family = tk.StringVar(value=FONT_FAMILIES[0])
+        self.font_size = tk.StringVar(value=str(DEFAULT_FONT_SIZE))
+        self.line_spacing = tk.StringVar(value=DEFAULT_LINE_SPACING)
         self._build()
 
     def _build(self):
@@ -119,6 +88,35 @@ class MdToPdfTab(tk.Frame):
         tk.Radiobutton(mode_row, text="Select files", variable=self.mode,
                        value="files", bg="#f5f5f5", font=("Segoe UI", 9),
                        command=self._switch_mode).pack(side="left")
+
+        # ── layout options ────────────────────────────────────────────
+        layout_row = tk.Frame(self, bg="#f5f5f5")
+        layout_row.pack(fill="x", padx=12, pady=(0, 4))
+
+        tk.Label(layout_row, text="Page:", bg="#f5f5f5",
+                 font=("Segoe UI", 9), fg="#333").pack(side="left")
+        ttk.Combobox(layout_row, textvariable=self.page_size, values=PAGE_SIZES,
+                     state="readonly", width=8).pack(side="left", padx=(4, 12))
+
+        tk.Label(layout_row, text="Margin (cm):", bg="#f5f5f5",
+                 font=("Segoe UI", 9), fg="#333").pack(side="left")
+        tk.Spinbox(layout_row, textvariable=self.margin_cm, from_=0, to=10,
+                   increment=0.5, width=5).pack(side="left", padx=(4, 12))
+
+        tk.Label(layout_row, text="Font:", bg="#f5f5f5",
+                 font=("Segoe UI", 9), fg="#333").pack(side="left")
+        ttk.Combobox(layout_row, textvariable=self.font_family, values=FONT_FAMILIES,
+                     state="readonly", width=18).pack(side="left", padx=(4, 12))
+
+        tk.Label(layout_row, text="Size (pt):", bg="#f5f5f5",
+                 font=("Segoe UI", 9), fg="#333").pack(side="left")
+        tk.Spinbox(layout_row, textvariable=self.font_size, from_=6, to=36,
+                   increment=1, width=4).pack(side="left", padx=(4, 12))
+
+        tk.Label(layout_row, text="Spacing:", bg="#f5f5f5",
+                 font=("Segoe UI", 9), fg="#333").pack(side="left")
+        ttk.Combobox(layout_row, textvariable=self.line_spacing, values=LINE_SPACINGS,
+                     state="readonly", width=5).pack(side="left", padx=(4, 0))
 
         # ── paste mode ─────────────────────────────────────────────
         self.paste_frame = tk.Frame(self, bg="#f5f5f5")
@@ -224,7 +222,25 @@ class MdToPdfTab(tk.Frame):
 
     # ── conversion ──────────────────────────────────────────────────
 
+    def _layout_kwargs(self):
+        try:
+            margin_cm = float(self.margin_cm.get())
+        except ValueError:
+            margin_cm = DEFAULT_MARGIN_CM
+        try:
+            font_size = int(float(self.font_size.get()))
+        except ValueError:
+            font_size = DEFAULT_FONT_SIZE
+        return {
+            "page_size": self.page_size.get(),
+            "margin_cm": margin_cm,
+            "font_family": self.font_family.get(),
+            "font_size": font_size,
+            "line_spacing": self.line_spacing.get(),
+        }
+
     def _start(self):
+        layout = self._layout_kwargs()
         if self.mode.get() == "paste":
             text = self.text.get("1.0", "end").strip()
             if not text:
@@ -235,26 +251,26 @@ class MdToPdfTab(tk.Frame):
             if not out_path:
                 return
             self.btn.configure(state="disabled", text="Converting…")
-            threading.Thread(target=self._run_paste, args=(text, out_path),
+            threading.Thread(target=self._run_paste, args=(text, out_path, layout),
                               daemon=True).start()
         else:
             if not self.files:
                 self.log.write("No files queued.", "err")
                 return
             self.btn.configure(state="disabled", text="Converting…")
-            threading.Thread(target=self._run_files, args=(list(self.files),),
+            threading.Thread(target=self._run_files, args=(list(self.files), layout),
                               daemon=True).start()
 
-    def _run_paste(self, text: str, out_path: str):
+    def _run_paste(self, text: str, out_path: str, layout: dict):
         try:
-            _md_to_pdf(text, out_path)
+            _md_to_pdf(text, out_path, **layout)
             self.after(0, lambda: self.log.write_link("✔ Saved: ", out_path, "ok"))
         except Exception as e:
             self.after(0, lambda e=e: self.log.write(f"✘ Error: {e}", "err"))
         finally:
             self.after(0, lambda: self.btn.configure(state="normal", text="Convert to PDF"))
 
-    def _run_files(self, files: list[str]):
+    def _run_files(self, files: list[str], layout: dict):
         for i, path in enumerate(files, 1):
             self.after(0, lambda p=path, n=i, t=len(files):
                        self.log.write(f"\n[{n}/{t}] {os.path.basename(p)}", "info"))
@@ -262,7 +278,7 @@ class MdToPdfTab(tk.Frame):
                 with open(path, "r", encoding="utf-8") as f:
                     text = f.read()
                 out_path = os.path.splitext(path)[0] + ".pdf"
-                _md_to_pdf(text, out_path)
+                _md_to_pdf(text, out_path, **layout)
                 self.after(0, lambda p=out_path: self.log.write_link("  ✔ Saved: ", p, "ok"))
             except Exception as e:
                 self.after(0, lambda e=e: self.log.write(f"  ✘ Error: {e}", "err"))

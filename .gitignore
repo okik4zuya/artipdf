@@ -11,7 +11,7 @@ __pycache__/
 build/
 dist/
 *.spec
-!UglyPDF.spec
+!ArtiPDF.spec
 
 # Bundled binaries (too large for git — add manually)
 poppler/

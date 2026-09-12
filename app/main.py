@@ -18,7 +18,7 @@ from .config       import BASE_DIR
 class App(TkinterDnD.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Ugly PDF")
+        self.title("ARTi PDF")
         self.geometry("700x660")
         self.minsize(560, 520)
         self.configure(bg="#1a1a1a")

@@ -30,3 +30,25 @@ else:
     POPPLER_PATH     = os.path.join(BASE_DIR, "poppler", "Library", "bin")
     TESSERACT_PATH   = os.path.join(BASE_DIR, "tesseract", "tesseract.exe")
     GHOSTSCRIPT_PATH = os.path.join(BASE_DIR, "ghostscript", "bin", "gswin64c.exe")
+
+
+def find_browser():
+    """Locate a headless-capable Edge/Chrome install for MD -> PDF rendering."""
+    if sys.platform == "win32":
+        candidates = [
+            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(os.environ.get("ProgramFiles", ""), "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(os.environ.get("ProgramFiles", ""), "Google", "Chrome", "Application", "chrome.exe"),
+        ]
+    elif IS_MAC:
+        candidates = [
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        ]
+    else:
+        candidates = [shutil.which("msedge"), shutil.which("google-chrome"), shutil.which("chromium")]
+    for c in candidates:
+        if c and os.path.exists(c):
+            return c
+    return None

@@ -4,9 +4,12 @@ setlocal
 set "SCRIPT_DIR=%~dp0"
 
 REM ── Run the existing PyInstaller build first ──────────────────────────
+REM Suppress build.bat's own "pause" so it returns control here automatically
+REM instead of stalling on a keypress before the installer step ever runs.
+set "CI=1"
 call "%SCRIPT_DIR%build.bat"
 
-if not exist "%SCRIPT_DIR%dist\UglyPDF\UglyPDF.exe" (
+if not exist "%SCRIPT_DIR%dist\ArtiPDF\ArtiPDF.exe" (
     echo.
     echo Build failed — skipping installer step.
     exit /b 1

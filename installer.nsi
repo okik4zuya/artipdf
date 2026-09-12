@@ -1,6 +1,6 @@
-; installer.nsi — NSIS installer for UglyPDF
+; installer.nsi — NSIS installer for ARTi PDF
 ; Build with: makensis installer.nsi
-; Requires dist\UglyPDF\ to already exist (run build.bat first).
+; Requires dist\ArtiPDF\ to already exist (run build.bat first).
 
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
@@ -9,15 +9,15 @@
 ; ---------------------------------------------------------------------------
 ; Constants — bump APP_VERSION alongside app/tab_about.py::VERSION
 ; ---------------------------------------------------------------------------
-!define APP_NAME        "UglyPDF"
-!define APP_VERSION      "1.0.5"
+!define APP_NAME        "ARTi PDF"
+!define APP_VERSION      "1.0.6"
 !define APP_PUBLISHER    "okik4zuya"
-!define APP_EXE          "UglyPDF.exe"
-!define APP_URL          "https://github.com/okik4zuya/uglypdf"
+!define APP_EXE          "ArtiPDF.exe"
+!define APP_URL          "https://github.com/okik4zuya/artipdf"
 !define UNINSTALL_KEY    "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
 Name "${APP_NAME}"
-OutFile "dist\UglyPDFSetup-${APP_VERSION}.exe"
+OutFile "dist\ArtiPDFSetup-${APP_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "Software\${APP_NAME}" "InstallDir"
 RequestExecutionLevel admin
@@ -71,7 +71,7 @@ FunctionEnd
 ; ---------------------------------------------------------------------------
 Section "Install" SEC01
     SetOutPath "$INSTDIR"
-    File /r "dist\UglyPDF\*.*"
+    File /r "dist\ArtiPDF\*.*"
 
     CreateDirectory "$SMPROGRAMS\${APP_NAME}"
     CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
