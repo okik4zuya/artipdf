@@ -3,7 +3,7 @@ from tkinter import font as tkfont
 import webbrowser
 
 APP_NAME    = "ARTi PDF"
-VERSION     = "1.0.6"
+VERSION     = "1.0.7"
 GITHUB_URL  = "https://github.com/okik4zuya/artipdf"
 
 

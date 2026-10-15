@@ -3,7 +3,8 @@ import threading
 import tkinter as tk
 from tkinter import filedialog
 
-from pdfminer.high_level import extract_text
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LTTextContainer
 from pdf2image import convert_from_path
 import pytesseract
 
@@ -104,7 +105,16 @@ class ConvertTab(tk.Frame):
     def _convert(self, pdf_path: str):
         try:
             output_md = os.path.splitext(pdf_path)[0] + ".md"
-            text = extract_text(pdf_path)
+
+            page_texts = []
+            for layout in extract_pages(pdf_path):
+                page_text = "".join(
+                    el.get_text() for el in layout
+                    if isinstance(el, LTTextContainer)
+                )
+                page_texts.append(page_text)
+
+            text = "\n".join(page_texts)
 
             if not text.strip():
                 self.after(0, lambda: self.log.write(
@@ -117,6 +127,17 @@ class ConvertTab(tk.Frame):
                     parts.append(pytesseract.image_to_string(page))
                 text = "\n".join(parts)
             else:
+                broken = [i for i, pt in enumerate(page_texts) if "�" in pt]
+                if broken:
+                    self.after(0, lambda b=broken: self.log.write(
+                        f"  Broken glyphs on page(s) {', '.join(str(i + 1) for i in b)} — "
+                        "running OCR for those…", "info"))
+                    for i in broken:
+                        ocr_pages = convert_from_path(
+                            pdf_path, dpi=300, poppler_path=POPPLER_PATH,
+                            first_page=i + 1, last_page=i + 1)
+                        page_texts[i] = pytesseract.image_to_string(ocr_pages[0])
+                    text = "\n".join(page_texts)
                 self.after(0, lambda: self.log.write("  Text layer detected."))
 
             with open(output_md, "w", encoding="utf-8") as f:

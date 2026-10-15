@@ -25,6 +25,16 @@ A free, offline PDF toolkit for Windows. No upload. No account. Just PDF tools.
 
 ---
 
+## Screenshots
+
+| Page Editor | Merge | PDF → Markdown |
+| --- | --- | --- |
+| ![Page Editor](assets/screenshots/artipdf-editor.png) | ![Merge](assets/screenshots/artipdf-merge.png) | ![PDF to Markdown](assets/screenshots/artipdf-convert.png) |
+
+The sample PDFs in these screenshots are generated placeholders, not real manuscripts.
+
+---
+
 ## Usage (pre-built)
 
 **Windows (installer)**
@@ -211,4 +221,6 @@ No PyInstaller cross-compilation — macOS builds run on the `macos-latest` GitH
 
 ## License
 
-Free for personal use.
+[MIT](LICENSE). The installer and portable build also bundle Ghostscript (AGPL-3.0), Poppler (GPL),
+Tesseract (Apache-2.0) and a few Python packages, each under its own license. See
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

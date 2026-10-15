@@ -10,9 +10,12 @@
 ; Constants — bump APP_VERSION alongside app/tab_about.py::VERSION
 ; ---------------------------------------------------------------------------
 !define APP_NAME        "ARTi PDF"
-!define APP_VERSION      "1.0.6"
+!define APP_VERSION      "1.0.7"
 !define APP_PUBLISHER    "okik4zuya"
 !define APP_EXE          "ArtiPDF.exe"
+!define APP_CLI_EXE      "ArtiPDFConvert.exe"
+!define APP_SUMMARY_EXE  "ArtiPDFSummarize.exe"
+!define APP_COMPRESS_EXE "ArtiPDFCompress.exe"
 !define APP_URL          "https://github.com/okik4zuya/artipdf"
 !define UNINSTALL_KEY    "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
@@ -98,6 +101,36 @@ Section "Install" SEC01
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD HKLM "${UNINSTALL_KEY}" "EstimatedSize" "$0"
 
+    ; Explorer file context menu: "Convert to Markdown" on .pdf files.
+    ; MultiSelectModel=Player only controls whether/how many items this verb
+    ; is offered for on a multi-selection; for a plain registry command verb
+    ; like this one, Explorer still launches one ArtiPDFConvert.exe process
+    ; per selected file (substituting "%1" each time), not one process for
+    ; the whole selection. ArtiPDFConvert.exe itself coalesces those sibling
+    ; processes into a single visible console (leader/follower election via
+    ; a named mutex, see pdf2md.py) so a bulk selection doesn't pop up N
+    ; console windows.
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\ConvertToMarkdown" "" "Convert to Markdown"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\ConvertToMarkdown" "Icon" "$INSTDIR\${APP_EXE},0"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\ConvertToMarkdown" "MultiSelectModel" "Player"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\ConvertToMarkdown\command" "" '"$INSTDIR\${APP_CLI_EXE}" "%1"'
+
+    ; "Summarize with AI" — same per-process-per-file leader/follower coalescing
+    ; as ConvertToMarkdown (see pdf2summary.py), under its own mutex/manifest
+    ; names so a concurrent Convert-to-Markdown batch never collides with it.
+    ; Requires the ARTi dashboard running locally (calls its /api/pdf-summarize).
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\SummarizeWithAI" "" "Summarize with AI"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\SummarizeWithAI" "Icon" "$INSTDIR\${APP_EXE},0"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\SummarizeWithAI" "MultiSelectModel" "Player"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\SummarizeWithAI\command" "" '"$INSTDIR\${APP_SUMMARY_EXE}" "%1"'
+
+    ; "Compress PDF" — same leader/follower coalescing (see pdf2compress.py),
+    ; own mutex/manifest names. One-click, fixed "medium" preset.
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\CompressPDF" "" "Compress PDF"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\CompressPDF" "Icon" "$INSTDIR\${APP_EXE},0"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\CompressPDF" "MultiSelectModel" "Player"
+    WriteRegStr HKCR "SystemFileAssociations\.pdf\shell\CompressPDF\command" "" '"$INSTDIR\${APP_COMPRESS_EXE}" "%1"'
+
     WriteUninstaller "$INSTDIR\Uninstall.exe"
 SectionEnd
 
@@ -114,4 +147,7 @@ Section "Uninstall"
 
     DeleteRegKey HKLM "${UNINSTALL_KEY}"
     DeleteRegKey HKLM "Software\${APP_NAME}"
+    DeleteRegKey HKCR "SystemFileAssociations\.pdf\shell\ConvertToMarkdown"
+    DeleteRegKey HKCR "SystemFileAssociations\.pdf\shell\SummarizeWithAI"
+    DeleteRegKey HKCR "SystemFileAssociations\.pdf\shell\CompressPDF"
 SectionEnd
